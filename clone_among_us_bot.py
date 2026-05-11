@@ -21,14 +21,15 @@ players = set()
 captain_player = ''
 waiting_players = set()
 kill_logs = list()
-start = None
+start_g = datetime.now()
 
 
 def get_main_keyboard():
     reply_keyboard = [
         ['Помощь', 'Активные задания'],
         ['Выполнить задание', 'Экстренное собрание'],
-        ['Сбой системы', 'Убить']
+        ['Сбой системы', 'Убить'],
+        ['Убийства', 'Камеры']
     ]
 
     return ReplyKeyboardMarkup(
@@ -69,7 +70,7 @@ async def restart_game(context=None):
     global captain_player
     global kill_logs
     global waiting_players
-    global start
+    global start_g
     d_of_tasks = {1: 'Комната экипажа (2)',
                   2: 'Санузел, второй этаж',
                   3: 'Коридор, второй этаж',
@@ -114,15 +115,15 @@ async def restart_game(context=None):
     players = set()
     captain_player = ''
     waiting_players = set()
-    start = None
+    start_g = None
     if context and context.job_queue:
         for job in context.job_queue.jobs():
             job.schedule_removal()
 
 
 async def start_game(update, context):
-    global start
-    start = datetime.now()
+    global start_g
+    start_g = datetime.now()
     await restart_game(context)
     await update.message.reply_text(
         'Игра началась!'
@@ -366,7 +367,7 @@ async def task(context):
 
 async def kill(update, context):
     global kill_logs
-    global start
+    global start_g
     user_id = update.effective_user.id
 
     current_jobs = context.job_queue.get_jobs_by_name(f"kill_{user_id}")
@@ -377,7 +378,7 @@ async def kill(update, context):
         )
         return
 
-    seconds = int((datetime.now() - start).total_seconds())
+    seconds = int((datetime.now() - start_g).total_seconds())
 
     minutes = seconds // 60
     seconds = seconds % 60
@@ -442,6 +443,10 @@ async def kill_log(update, context):
     await update.message.reply_text(text)
 
 
+async def cam(update, context):
+    await update.message.reply_text('https://telemost.yandex.ru/j/32983473105542')
+
+
 async def text_buttons(update, context):
     text = update.message.text
 
@@ -472,6 +477,9 @@ async def text_buttons(update, context):
     elif text == 'Убийства':
         await kill_log(update, context)
 
+    elif text == 'Камеры':
+        await cam(update, context)
+
     else:
         await enter_task(update, context)
 
@@ -492,6 +500,7 @@ def main():
     application.add_handler(CommandHandler('kill', kill))
     application.add_handler(CommandHandler('status', status))
     application.add_handler(CommandHandler('kill_log', kill_log))
+    application.add_handler(CommandHandler('cam', cam))
     text_handler = MessageHandler(filters.TEXT, text_buttons)
     application.add_handler(text_handler)
     application.run_polling()
