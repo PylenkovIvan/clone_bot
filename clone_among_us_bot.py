@@ -286,21 +286,23 @@ async def enter_task(update, context):
 
 
 async def finish(update, context):
-    global d_of_tasks
-    global active_tasks_array
-    global failed_tasks
-    global crash_fl
+    global captain_player
+    if update.effective_chat.id != captain_player:
+        await update.message.reply_text('Отказано',
+                                        reply_markup=get_main_keyboard())
+        return
     reply_keyboard = [['/start']]
     markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=False)
     restart_game()
     await update.message.reply_text('Игра завершена. '
-                                    'Введите команду "/start" для запуска новой игры',
+                                    'Введите команду "/start_game" для запуска новой игры',
                                     reply_markup=markup)
 
 
 async def crash(update, context):
     global crash_fl
     if crash_fl:
+        await broadcast(context, 'Всё уже сломали до тебя!')
         return
     crash_fl = True
     await broadcast(context, 'Всё сломалось, помогите!')
