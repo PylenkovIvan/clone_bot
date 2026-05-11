@@ -204,7 +204,8 @@ async def enter_task(update, context):
 
     if waiting_player != update.effective_user.id:
         await update.message.reply_text(
-            "Обрабатывается задание другого игрока\nПопробуйте позднее"
+            "Обрабатывается задание другого игрока\nПопробуйте позднее",
+            reply_markup=get_main_keyboard()
         )
         return
 
