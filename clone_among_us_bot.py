@@ -196,13 +196,6 @@ async def enter_task(update, context):
         await update.message.reply_text('Сбои в системе. Команда не принята')
         return
 
-    if update.effective_user.id not in waiting_players:
-        await update.message.reply_text(
-            "Обрабатывается задание другого игрока\nПопробуйте позднее",
-            reply_markup=get_main_keyboard()
-        )
-        return
-
     fl = True
     task_number = update.message.text
     task_number = task_number.strip()
@@ -365,7 +358,8 @@ async def kill(update, context):
 
     if current_jobs:
         await update.message.reply_text(
-            "Идёт перезарядка"
+            "Идёт перезарядка",
+            reply_markup=get_main_keyboard()
         )
         return
 
@@ -377,7 +371,8 @@ async def kill(update, context):
     )
 
     await update.message.reply_text(
-        f"Произошло убийство!"
+        f"Произошло убийство!",
+        reply_markup=get_main_keyboard()
     )
 
 
@@ -386,7 +381,8 @@ async def kill_task(context):
     try:
         await context.bot.send_message(
             chat_id=user_id,
-            text="Перезарядка завершена"
+            text="Перезарядка завершена",
+            reply_markup=get_main_keyboard()
         )
     except:
         pass
