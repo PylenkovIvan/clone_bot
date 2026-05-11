@@ -358,8 +358,7 @@ async def kill(update, context):
 
     if current_jobs:
         await update.message.reply_text(
-            "Идёт перезарядка",
-            reply_markup=get_main_keyboard()
+            "Идёт перезарядка"
         )
         return
 
@@ -371,8 +370,7 @@ async def kill(update, context):
     )
 
     await update.message.reply_text(
-        f"Произошло убийство!",
-        reply_markup=get_main_keyboard()
+        f"Произошло убийство!"
     )
 
 
@@ -381,8 +379,7 @@ async def kill_task(context):
     try:
         await context.bot.send_message(
             chat_id=user_id,
-            text="Перезарядка завершена",
-            reply_markup=get_main_keyboard()
+            text="Перезарядка завершена"
         )
     except:
         pass
