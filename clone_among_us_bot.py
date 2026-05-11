@@ -12,6 +12,15 @@ logger = logging.getLogger(__name__)
 
 TIMER = 45
 
+d_of_tasks = dict()
+active_tasks_array = list()
+failed_tasks = list()
+crash_fl = False
+fl_enter = False
+players = set()
+waiting_player = ''
+captain_player = ''
+
 
 def get_main_keyboard():
     reply_keyboard = [
@@ -25,6 +34,19 @@ def get_main_keyboard():
         resize_keyboard=True,
         one_time_keyboard=False
     )
+
+
+async def broadcast(context, text, reply_markup=None):
+    global players
+    for player_id in players:
+        try:
+            await context.bot.send_message(
+                chat_id=player_id,
+                text=text,
+                reply_markup=reply_markup
+            )
+        except:
+            pass
 
 
 def remove_job_if_exists(name, context):
@@ -42,8 +64,7 @@ def restart_game():
     global failed_tasks
     global crash_fl
     global fl_enter
-    crash_fl = False
-    fl_enter = False
+    global players
     d_of_tasks = {1: 'Комната экипажа (2)',
                   2: 'Санузел, второй этаж',
                   3: 'Коридор, второй этаж',
@@ -82,16 +103,34 @@ def restart_game():
                   36: 'Кафетерий'}
     active_tasks_array = [i for i in range(1, 37)]
     failed_tasks = list()
+    crash_fl = False
+    fl_enter = False
+    players = set()
+
+
+async def start_game(update, context):
+    restart_game()
+    await update.message.reply_text(
+        'Игра началась!'
+    )
+
+
+async def captain(update, context):
+    global captain_player
+    captain_player = update.effective_chat.id
+    await update.message.reply_text(
+        'Бортовой компьютер подключен'
+    )
 
 
 async def start(update, context):
-    global active_tasks_array
-    global d_of_tasks
-    global failed_tasks
-    global crash_fl
-    restart_game()
+    global players
+
+    user_id = update.effective_chat.id
+    players.add(user_id)
+
     await update.message.reply_text(
-        'Игра началась!',
+        'Йо-хо-хо, все на борт!',
         reply_markup=get_main_keyboard()
     )
 
@@ -136,8 +175,10 @@ async def active_tasks(update, context):
 async def complete_task(update, context):
     global crash_fl
     global fl_enter
+    global waiting_player
     if not crash_fl:
         fl_enter = True
+        waiting_player = update.effective_user.id
         await update.message.reply_text(
             "Введите номер выполненного задания",
             reply_markup=ReplyKeyboardRemove()
@@ -152,42 +193,67 @@ async def enter_task(update, context):
     global failed_tasks
     global crash_fl
     global fl_enter
+    global waiting_player
     if crash_fl:
         await update.message.reply_text('Сбои в системе. Команда не принята')
-    if not crash_fl:
-        fl = True
-        task_number = update.message.text
-        task_number = task_number.strip()
-        for el in task_number:
-            if el not in '0123456789':
-                fl = False
-        if fl:
-            task_number = int(update.message.text)
-        if task_number == 100:
-            if not fl_enter:
-                await update.message.reply_text('Активируйте команду /complete_task',
-                                                reply_markup=get_main_keyboard())
-            else:
-                fl_enter = False
-                for i in range(len(active_tasks_array)):
-                    task_number = random.sample(active_tasks_array, 1)
-                    del active_tasks_array[active_tasks_array.index(task_number[0])]
-                    text = f'Задание №{task_number[0]} выполнено!'
-                    if task_number in failed_tasks:
-                        del failed_tasks[failed_tasks.index(task_number[0])]
-                    if len(active_tasks_array) == 0:
-                        text += '\nВсе задания выполнены!'
-                        restart_game()
-                    await update.message.reply_text(text, reply_markup=get_main_keyboard())
-                    await asyncio.sleep(0.1)
-        elif task_number in active_tasks_array:
-            if not fl_enter:
-                await update.message.reply_text('Активируйте команду /complete_task',
-                                                reply_markup=get_main_keyboard())
-            else:
-                fl_enter = False
-                n = random.randint(1, 20)
-                if n != 7 and task_number not in failed_tasks:
+        return
+
+    if waiting_player != update.effective_user.id:
+        await update.message.reply_text(
+            "Обрабатывается задание другого игрока\nПопробуйте позднее"
+        )
+        return
+
+    fl = True
+    task_number = update.message.text
+    task_number = task_number.strip()
+    for el in task_number:
+        if el not in '0123456789':
+            fl = False
+    if fl:
+        task_number = int(update.message.text)
+    if task_number == 100:
+        if not fl_enter:
+            await update.message.reply_text('Активируйте команду /complete_task',
+                                            reply_markup=get_main_keyboard())
+        else:
+            fl_enter = False
+            for i in range(len(active_tasks_array)):
+                task_number = random.sample(active_tasks_array, 1)
+                del active_tasks_array[active_tasks_array.index(task_number[0])]
+                text = f'Задание №{task_number[0]} выполнено!'
+                if task_number in failed_tasks:
+                    del failed_tasks[failed_tasks.index(task_number[0])]
+                if len(active_tasks_array) == 0:
+                    text += '\nВсе задания выполнены!'
+                    restart_game()
+                await update.message.reply_text(text, reply_markup=get_main_keyboard())
+                await asyncio.sleep(0.1)
+    elif task_number in active_tasks_array:
+        if not fl_enter:
+            await update.message.reply_text('Активируйте команду /complete_task',
+                                            reply_markup=get_main_keyboard())
+        else:
+            fl_enter = False
+            n = random.randint(1, 20)
+            if n != 7 and task_number not in failed_tasks:
+                del active_tasks_array[active_tasks_array.index(task_number)]
+                text = f'Задание №{task_number} выполнено!'
+                if len(failed_tasks) != 0:
+                    can_complete = failed_tasks[0]
+                    del failed_tasks[0]
+                    text += f' Можно выполнить задание №{can_complete}'
+                if len(active_tasks_array) == 0:
+                    text += '\nВсе задания выполнены!'
+                    restart_game()
+                await update.message.reply_text(text, reply_markup=get_main_keyboard())
+            if n == 7 and task_number not in failed_tasks:
+                if len(failed_tasks) < len(active_tasks_array) // 2:
+                    failed_tasks.append(task_number)
+                    await update.message.reply_text(
+                        f'Задание не выполнено. Оно не прошло проверку...',
+                        reply_markup=get_main_keyboard())
+                else:
                     del active_tasks_array[active_tasks_array.index(task_number)]
                     text = f'Задание №{task_number} выполнено!'
                     if len(failed_tasks) != 0:
@@ -198,38 +264,21 @@ async def enter_task(update, context):
                         text += '\nВсе задания выполнены!'
                         restart_game()
                     await update.message.reply_text(text, reply_markup=get_main_keyboard())
-                if n == 7 and task_number not in failed_tasks:
-                    if len(failed_tasks) < len(active_tasks_array) // 2:
-                        failed_tasks.append(task_number)
-                        await update.message.reply_text(
-                            f'Задание не выполнено. Оно не прошло проверку...',
-                            reply_markup=get_main_keyboard())
-                    else:
-                        del active_tasks_array[active_tasks_array.index(task_number)]
-                        text = f'Задание №{task_number} выполнено!'
-                        if len(failed_tasks) != 0:
-                            can_complete = failed_tasks[0]
-                            del failed_tasks[0]
-                            text += f' Можно выполнить задание №{can_complete}'
-                        if len(active_tasks_array) == 0:
-                            text += '\nВсе задания выполнены!'
-                            restart_game()
-                        await update.message.reply_text(text, reply_markup=get_main_keyboard())
-                elif task_number in failed_tasks:
-                    await update.message.reply_text('Задание пока нельзя выполнить',
-                                                    reply_markup=get_main_keyboard())
-        elif task_number not in active_tasks_array and task_number in range(1, 37):
-            if not fl_enter:
-                await update.message.reply_text('Активируйте команду /complete_task',
+            elif task_number in failed_tasks:
+                await update.message.reply_text('Задание пока нельзя выполнить',
                                                 reply_markup=get_main_keyboard())
-            else:
-                fl_enter = False
-                await update.message.reply_text('Задание было выполнено до вас',
-                                                reply_markup=get_main_keyboard())
+    elif task_number not in active_tasks_array and task_number in range(1, 37):
+        if not fl_enter:
+            await update.message.reply_text('Активируйте команду /complete_task',
+                                            reply_markup=get_main_keyboard())
         else:
             fl_enter = False
-            await update.message.reply_text('Бортовой компьютер не разобрал вашего сообщения',
+            await update.message.reply_text('Задание было выполнено до вас',
                                             reply_markup=get_main_keyboard())
+    else:
+        fl_enter = False
+        await update.message.reply_text('Бортовой компьютер не разобрал вашего сообщения',
+                                        reply_markup=get_main_keyboard())
 
 
 async def finish(update, context):
@@ -247,24 +296,28 @@ async def finish(update, context):
 
 async def crash(update, context):
     global crash_fl
-    chat_id = update.effective_chat.id
-    remove_job_if_exists(str(chat_id), context)
-    context.job_queue.run_once(task, TIMER, chat_id=chat_id, name=str(chat_id))
+    if crash_fl:
+        return
     crash_fl = True
-    await update.message.reply_text("Всё сломалось, помогите!", reply_markup=ReplyKeyboardRemove())
+    await broadcast(context, 'Всё сломалось, помогите!')
+    context.job_queue.run_once(task, TIMER)
 
 
 async def meeting(update, context):
     global crash_fl
-    if not crash_fl:
-        await update.message.reply_text("Собрание", reply_markup=get_main_keyboard())
     if crash_fl:
         await update.message.reply_text('Сбои в системе. Команда не принята')
+        return
+
+    await broadcast(context, 'Общий сбор!', get_main_keyboard())
 
 
 async def fix_errors(update, context):
     global crash_fl
     global active_tasks_array
+    global captain_player
+    if update.effective_chat.id != captain_player:
+        await update.message.reply_text('Отказано', reply_markup=get_main_keyboard())
     crash_fl = False
     failed_tasks_after_crash = list()
     for i in range(1, 37):
@@ -292,18 +345,11 @@ async def fix_errors(update, context):
 
 
 async def task(context):
-    global d_of_tasks
-    global active_tasks_array
-    global failed_tasks
-    global crash_fl
+    await broadcast(
+        context,
+        "Критическое повреждение системы...\nИгра окончена."
+    )
     restart_game()
-    reply_keyboard = [['/start']]
-    markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=False)
-    await context.bot.send_message(chat_id=context.job.chat_id,
-                                   text='Критическое повреждение системы. '
-                                        'Дальнейшее управление невозможно. '
-                                        'Игра завершена...',
-                                   reply_markup=markup)
 
 
 async def text_buttons(update, context):
@@ -338,13 +384,13 @@ def main():
     TOKEN = '5837168283:AAHdzQQLAzX5a4C3fDcOg05PNkYdPWt1lxE'
     application = (Application.builder().token(TOKEN).build())
     application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('start_game', start_game))
     application.add_handler(CommandHandler('help', help_command))
     application.add_handler(CommandHandler('active_tasks', active_tasks))
     application.add_handler(CommandHandler('complete_task', complete_task))
     application.add_handler(CommandHandler('crash', crash))
-    application.add_handler(CommandHandler('first_level', first_level))
-    application.add_handler(CommandHandler('second_level', second_level))
     application.add_handler(CommandHandler('145288', fix_errors))
+    application.add_handler(CommandHandler('bigboss', captain))
     application.add_handler(CommandHandler('emergency_meeting', meeting))
     application.add_handler(CommandHandler('finish', finish))
     text_handler = MessageHandler(filters.TEXT, text_buttons)
@@ -353,44 +399,4 @@ def main():
 
 
 if __name__ == '__main__':
-    d_of_tasks = {1: 'Комната экипажа (2)',
-                  2: 'Санузел, второй этаж',
-                  3: 'Коридор, второй этаж',
-                  4: 'Комната экипажа (1)',
-                  5: 'Оружейная',
-                  6: 'Открытый космос',
-                  7: 'Камбуз',
-                  8: 'Открытый космос',
-                  9: 'Санузел, первый этаж',
-                  10: 'Мостик',
-                  11: 'Кафетерий',
-                  12: 'Коридор, первый этаж',
-                  13: 'Комната экипажа (1)',
-                  14: 'Кафетерий',
-                  15: 'Комната экипажа (2)',
-                  16: 'Оружейная',
-                  17: 'Коридор, первый этаж',
-                  18: 'Коридор, второй этаж',
-                  19: 'Мостик',
-                  20: 'Мастерская',
-                  21: 'Машинное отделение',
-                  22: 'Открытый космос',
-                  23: 'Комната экипажа (2)',
-                  24: 'Санузел, второй этаж',
-                  25: 'Коридор, второй этаж',
-                  26: 'Оружейная',
-                  27: 'Камбуз',
-                  28: 'Открытый космос',
-                  29: 'Санузел, первый этаж',
-                  30: 'Мостик',
-                  31: 'Кафетерий',
-                  32: 'Коридор, второй этаж',
-                  33: 'Открытый космос',
-                  34: 'Машинное отделение',
-                  35: 'Мастерская',
-                  36: 'Кафетерий'}
-    active_tasks_array = [i for i in range(1, 37)]
-    failed_tasks = list()
-    crash_fl = False
-    fl_enter = False
     main()
