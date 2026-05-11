@@ -16,17 +16,16 @@ d_of_tasks = dict()
 active_tasks_array = list()
 failed_tasks = list()
 crash_fl = False
-fl_enter = False
 players = set()
-waiting_player = ''
 captain_player = ''
+waiting_players = set()
 
 
 def get_main_keyboard():
     reply_keyboard = [
         ['Помощь', 'Активные задания'],
         ['Выполнить задание', 'Экстренное собрание'],
-        ['Сбой системы']
+        ['Сбой системы', 'Убить']
     ]
 
     return ReplyKeyboardMarkup(
@@ -63,10 +62,9 @@ def restart_game():
     global d_of_tasks
     global failed_tasks
     global crash_fl
-    global fl_enter
     global players
     global captain_player
-    global waiting_player
+    global waiting_players
     d_of_tasks = {1: 'Комната экипажа (2)',
                   2: 'Санузел, второй этаж',
                   3: 'Коридор, второй этаж',
@@ -106,10 +104,9 @@ def restart_game():
     active_tasks_array = [i for i in range(1, 37)]
     failed_tasks = list()
     crash_fl = False
-    fl_enter = False
     players = set()
     captain_player = ''
-    waiting_player = ''
+    waiting_players = set()
 
 
 async def start_game(update, context):
@@ -178,11 +175,9 @@ async def active_tasks(update, context):
 
 async def complete_task(update, context):
     global crash_fl
-    global fl_enter
-    global waiting_player
+    global waiting_players
     if not crash_fl:
-        fl_enter = True
-        waiting_player = update.effective_user.id
+        waiting_players.add(update.effective_user.id)
         await update.message.reply_text(
             "Введите номер выполненного задания",
             reply_markup=ReplyKeyboardRemove()
@@ -196,13 +191,12 @@ async def enter_task(update, context):
     global active_tasks_array
     global failed_tasks
     global crash_fl
-    global fl_enter
-    global waiting_player
+    global waiting_players
     if crash_fl:
         await update.message.reply_text('Сбои в системе. Команда не принята')
         return
 
-    if waiting_player != update.effective_user.id:
+    if update.effective_user.id not in waiting_players:
         await update.message.reply_text(
             "Обрабатывается задание другого игрока\nПопробуйте позднее",
             reply_markup=get_main_keyboard()
@@ -218,11 +212,11 @@ async def enter_task(update, context):
     if fl:
         task_number = int(update.message.text)
     if task_number == 100:
-        if not fl_enter:
+        if update.effective_user.id not in waiting_players:
             await update.message.reply_text('Активируйте команду /complete_task',
                                             reply_markup=get_main_keyboard())
         else:
-            fl_enter = False
+            waiting_players.discard(update.effective_user.id)
             for i in range(len(active_tasks_array)):
                 task_number = random.sample(active_tasks_array, 1)
                 del active_tasks_array[active_tasks_array.index(task_number[0])]
@@ -235,11 +229,11 @@ async def enter_task(update, context):
                 await update.message.reply_text(text, reply_markup=get_main_keyboard())
                 await asyncio.sleep(0.1)
     elif task_number in active_tasks_array:
-        if not fl_enter:
+        if update.effective_user.id not in waiting_players:
             await update.message.reply_text('Активируйте команду /complete_task',
                                             reply_markup=get_main_keyboard())
         else:
-            fl_enter = False
+            waiting_players.discard(update.effective_user.id)
             n = random.randint(1, 20)
             if n != 7 and task_number not in failed_tasks:
                 del active_tasks_array[active_tasks_array.index(task_number)]
@@ -273,15 +267,15 @@ async def enter_task(update, context):
                 await update.message.reply_text('Задание пока нельзя выполнить',
                                                 reply_markup=get_main_keyboard())
     elif task_number not in active_tasks_array and task_number in range(1, 37):
-        if not fl_enter:
+        if update.effective_user.id not in waiting_players:
             await update.message.reply_text('Активируйте команду /complete_task',
                                             reply_markup=get_main_keyboard())
         else:
-            fl_enter = False
+            waiting_players.discard(update.effective_user.id)
             await update.message.reply_text('Задание было выполнено до вас',
                                             reply_markup=get_main_keyboard())
     else:
-        fl_enter = False
+        waiting_players.discard(update.effective_user.id)
         await update.message.reply_text('Бортовой компьютер не разобрал вашего сообщения',
                                         reply_markup=get_main_keyboard())
 
@@ -364,6 +358,40 @@ async def task(context):
     restart_game()
 
 
+async def kill(update, context):
+    user_id = update.effective_user.id
+
+    current_jobs = context.job_queue.get_jobs_by_name(f"kill_{user_id}")
+
+    if current_jobs:
+        await update.message.reply_text(
+            "Идёт перезарядка"
+        )
+        return
+
+    context.job_queue.run_once(
+        kill_task,
+        TIMER,
+        name=f"kill_{user_id}",
+        data=user_id
+    )
+
+    await update.message.reply_text(
+        f"Произошло убийство!"
+    )
+
+
+async def kill_task(context):
+    user_id = context.job.data
+    try:
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="Перезарядка завершена"
+        )
+    except:
+        pass
+
+
 async def text_buttons(update, context):
     text = update.message.text
 
@@ -388,6 +416,9 @@ async def text_buttons(update, context):
     elif text == 'Сбой системы':
         await crash(update, context)
 
+    elif text == 'Убить':
+        await kill(update, context)
+
     else:
         await enter_task(update, context)
 
@@ -405,6 +436,7 @@ def main():
     application.add_handler(CommandHandler('bigboss', captain))
     application.add_handler(CommandHandler('emergency_meeting', meeting))
     application.add_handler(CommandHandler('finish', finish))
+    application.add_handler(CommandHandler('kill', kill))
     text_handler = MessageHandler(filters.TEXT, text_buttons)
     application.add_handler(text_handler)
     application.run_polling()
