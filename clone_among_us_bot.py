@@ -65,6 +65,8 @@ def restart_game():
     global crash_fl
     global fl_enter
     global players
+    global captain_player
+    global waiting_player
     d_of_tasks = {1: 'Комната экипажа (2)',
                   2: 'Санузел, второй этаж',
                   3: 'Коридор, второй этаж',
@@ -106,6 +108,8 @@ def restart_game():
     crash_fl = False
     fl_enter = False
     players = set()
+    captain_player = ''
+    waiting_player = ''
 
 
 async def start_game(update, context):
@@ -300,7 +304,12 @@ async def crash(update, context):
         return
     crash_fl = True
     await broadcast(context, 'Всё сломалось, помогите!')
-    context.job_queue.run_once(task, TIMER)
+    remove_job_if_exists("global_crash", context)
+    context.job_queue.run_once(
+        task,
+        TIMER,
+        name="global_crash"
+    )
 
 
 async def meeting(update, context):
@@ -318,6 +327,7 @@ async def fix_errors(update, context):
     global captain_player
     if update.effective_chat.id != captain_player:
         await update.message.reply_text('Отказано', reply_markup=get_main_keyboard())
+        return
     crash_fl = False
     failed_tasks_after_crash = list()
     for i in range(1, 37):
@@ -329,8 +339,7 @@ async def fix_errors(update, context):
     if failed_task not in active_tasks_array:
         active_tasks_array.append(failed_task)
     active_tasks_array.sort()
-    chat_id = update.message.chat_id
-    job_removed = remove_job_if_exists(str(chat_id), context)
+    job_removed = remove_job_if_exists("global_crash", context)
     text = f'Система восстановлена. Пострадало задание №{failed_task}' \
         if job_removed else 'Ты инструкцию читал?! \n' \
                             'Сказано: "Активировать при крайней необходимости" \n' \
