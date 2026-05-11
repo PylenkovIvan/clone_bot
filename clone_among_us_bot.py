@@ -57,7 +57,7 @@ def remove_job_if_exists(name, context):
     return True
 
 
-def restart_game():
+def restart_game(context=None):
     global active_tasks_array
     global d_of_tasks
     global failed_tasks
@@ -107,10 +107,13 @@ def restart_game():
     players = set()
     captain_player = ''
     waiting_players = set()
+    if context and context.job_queue:
+        for job in context.job_queue.jobs():
+            job.schedule_removal()
 
 
 async def start_game(update, context):
-    restart_game()
+    restart_game(context)
     await update.message.reply_text(
         'Игра началась!'
     )
@@ -218,7 +221,7 @@ async def enter_task(update, context):
                     del failed_tasks[failed_tasks.index(task_number[0])]
                 if len(active_tasks_array) == 0:
                     text += '\nВсе задания выполнены!'
-                    restart_game()
+                    restart_game(context)
                 await update.message.reply_text(text, reply_markup=get_main_keyboard())
                 await asyncio.sleep(0.1)
     elif task_number in active_tasks_array:
@@ -237,7 +240,7 @@ async def enter_task(update, context):
                     text += f' Можно выполнить задание №{can_complete}'
                 if len(active_tasks_array) == 0:
                     text += '\nВсе задания выполнены!'
-                    restart_game()
+                    restart_game(context)
                 await update.message.reply_text(text, reply_markup=get_main_keyboard())
             if n == 7 and task_number not in failed_tasks:
                 if len(failed_tasks) < len(active_tasks_array) // 2:
@@ -254,7 +257,7 @@ async def enter_task(update, context):
                         text += f' Можно выполнить задание №{can_complete}'
                     if len(active_tasks_array) == 0:
                         text += '\nВсе задания выполнены!'
-                        restart_game()
+                        restart_game(context)
                     await update.message.reply_text(text, reply_markup=get_main_keyboard())
             elif task_number in failed_tasks:
                 await update.message.reply_text('Задание пока нельзя выполнить',
@@ -279,9 +282,9 @@ async def finish(update, context):
         await update.message.reply_text('Отказано',
                                         reply_markup=get_main_keyboard())
         return
-    reply_keyboard = [['/start']]
+    reply_keyboard = [['/start_game']]
     markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=False)
-    restart_game()
+    restart_game(context)
     await update.message.reply_text('Игра завершена. '
                                     'Введите команду "/start_game" для запуска новой игры',
                                     reply_markup=markup)
@@ -348,7 +351,7 @@ async def task(context):
         context,
         "Критическое повреждение системы...\nИгра окончена."
     )
-    restart_game()
+    restart_game(context)
 
 
 async def kill(update, context):
