@@ -22,6 +22,11 @@ captain_player = ''
 waiting_players = set()
 kill_logs = list()
 start_g = datetime.now()
+casino_logs = dict()
+LUCK = ["Мастер Джекпота", "Фартовый Король", "Разрушитель вероятности", "Казино Дон",
+        "Капо слотов", "Хозяин слот-машины", "Сломавший матрицу"]
+UNLUCK = ["Лицо нуля", "Архонт пустого кошелька", "Падший множитель",
+          "Легенда лоу-таба", "Олух"]
 
 
 def get_main_keyboard():
@@ -30,6 +35,21 @@ def get_main_keyboard():
         ['Выполнить задание', 'Экстренное собрание'],
         ['Сбой системы', 'Убить'],
         ['Убийства', 'Камеры']
+    ]
+
+    return ReplyKeyboardMarkup(
+        reply_keyboard,
+        resize_keyboard=True,
+        one_time_keyboard=False
+    )
+
+
+def get_joke_keyboard():
+    reply_keyboard = [
+        ['ʜǝlԀ', 'ʞsɐ⊥ ǝʌᴉʇɔ∀'],
+        ['sllᴉʞ', 'sɐɹǝɯɐɔ'],
+        ['ʞsɐ⊥ ǝʇǝldɯoɔ', 'ɓuᴉʇǝǝɯ ʎɔuǝɹǝɯǝ'],
+        ['ɥsɐɹɔ ɯǝʇsʎs', 'llᴉʞ']
     ]
 
     return ReplyKeyboardMarkup(
@@ -71,6 +91,7 @@ async def restart_game(context=None):
     global kill_logs
     global waiting_players
     global start_g
+    global casino_logs
     d_of_tasks = {1: 'Комната экипажа (2)',
                   2: 'Санузел, второй этаж',
                   3: 'Коридор, второй этаж',
@@ -115,15 +136,14 @@ async def restart_game(context=None):
     players = set()
     captain_player = ''
     waiting_players = set()
-    start_g = None
+    start_g = datetime.now()
+    casino_logs = dict()
     if context and context.job_queue:
         for job in context.job_queue.jobs():
             job.schedule_removal()
 
 
 async def start_game(update, context):
-    global start_g
-    start_g = datetime.now()
     await restart_game(context)
     await update.message.reply_text(
         'Игра началась!'
@@ -140,9 +160,11 @@ async def captain(update, context):
 
 async def start(update, context):
     global players
+    global casino_logs
 
     user_id = update.effective_chat.id
     players.add(user_id)
+    casino_logs[user_id] = [0, 0]
 
     await update.message.reply_text(
         'Йо-хо-хо, все на борт!',
@@ -178,10 +200,26 @@ async def active_tasks(update, context):
     global d_of_tasks
     global active_tasks_array
     global crash_fl
+    global casino_logs
     if not crash_fl:
         tasks = ''
         for el in active_tasks_array:
             tasks += f'Задание №{el}: {d_of_tasks[el]} \n'
+        if casino_logs[update.effective_user.id][1] == 2:
+            await update.message.reply_text(tasks, reply_markup=get_joke_keyboard())
+            return
+        if casino_logs[update.effective_user.id][1] == 1:
+            await update.message.reply_text(
+                f'Конечно, {random.choice(LUCK)}, '
+                f'вот активные задания\n' + tasks,
+                reply_markup=get_main_keyboard())
+            return
+        if casino_logs[update.effective_user.id][1] == 3:
+            await update.message.reply_text(
+                f'Куда тебе, {random.choice(UNLUCK)}, '
+                f'ты же всё сломаешь\n' + tasks,
+                reply_markup=get_main_keyboard())
+            return
         await update.message.reply_text(tasks, reply_markup=get_main_keyboard())
     if crash_fl:
         await update.message.reply_text('Сбои в системе. Команда не принята')
@@ -190,8 +228,24 @@ async def active_tasks(update, context):
 async def complete_task(update, context):
     global crash_fl
     global waiting_players
+    global casino_logs
     if not crash_fl:
         waiting_players.add(update.effective_user.id)
+        if casino_logs[update.effective_user.id][1] == 2:
+            await update.message.reply_text("Введите номер выполненного задания",
+                                            reply_markup=get_joke_keyboard())
+            return
+        if casino_logs[update.effective_user.id][1] == 1:
+            await update.message.reply_text(f'Такие как Вы, {random.choice(LUCK)}, '
+                                            f'могут не выполнять задания\nВведите номер задания',
+                                            reply_markup=get_main_keyboard())
+            return
+        if casino_logs[update.effective_user.id][1] == 3:
+            await update.message.reply_text(f'Сломал, {random.choice(UNLUCK)}? '
+                                            f'Ладно, позволяю тебе, {random.choice(UNLUCK)},'
+                                            f'ввести номер задания\n',
+                                            reply_markup=get_main_keyboard())
+            return
         await update.message.reply_text(
             "Введите номер выполненного задания",
             reply_markup=ReplyKeyboardRemove()
@@ -206,6 +260,7 @@ async def enter_task(update, context):
     global failed_tasks
     global crash_fl
     global waiting_players
+    global casino_logs
     if crash_fl:
         await update.message.reply_text('Сбои в системе. Команда не принята')
         return
@@ -220,6 +275,10 @@ async def enter_task(update, context):
         task_number = int(update.message.text)
     if task_number == 100:
         if update.effective_user.id not in waiting_players:
+            if casino_logs[update.effective_user.id][1] == 2:
+                await update.message.reply_text("Активируйте команду /complete_task",
+                                                reply_markup=get_joke_keyboard())
+                return
             await update.message.reply_text('Активируйте команду /complete_task',
                                             reply_markup=get_main_keyboard())
         else:
@@ -233,10 +292,18 @@ async def enter_task(update, context):
                 if len(active_tasks_array) == 0:
                     text += '\nВсе задания выполнены!'
                     await restart_game(context)
+                if casino_logs[update.effective_user.id][1] == 2:
+                    await update.message.reply_text(text,
+                                                    reply_markup=get_joke_keyboard())
+                    return
                 await update.message.reply_text(text, reply_markup=get_main_keyboard())
                 await asyncio.sleep(0.1)
     elif task_number in active_tasks_array:
         if update.effective_user.id not in waiting_players:
+            if casino_logs[update.effective_user.id][1] == 2:
+                await update.message.reply_text("Активируйте команду /complete_task",
+                                                reply_markup=get_joke_keyboard())
+                return
             await update.message.reply_text('Активируйте команду /complete_task',
                                             reply_markup=get_main_keyboard())
         else:
@@ -252,10 +319,26 @@ async def enter_task(update, context):
                 if len(active_tasks_array) == 0:
                     text += '\nВсе задания выполнены!'
                     await restart_game(context)
+                if casino_logs[update.effective_user.id][1] == 2:
+                    await update.message.reply_text(text,
+                                                    reply_markup=get_joke_keyboard())
+                    return
                 await update.message.reply_text(text, reply_markup=get_main_keyboard())
             if n == 7 and task_number not in failed_tasks:
                 if len(failed_tasks) < len(active_tasks_array) // 2:
                     failed_tasks.append(task_number)
+                    if casino_logs[update.effective_user.id][1] == 2:
+                        await update.message.reply_text(
+                            f'Задание не выполнено. Оно не прошло проверку...',
+                            reply_markup=get_joke_keyboard())
+                        return
+                    if casino_logs[update.effective_user.id][1] == 3:
+                        await update.message.reply_text(
+                            f'ДА НУ КАК!!! ТЫ ЧЕ С ЭТИМ ЗАДАНИЕМ ДЕЛАЛ, ЧТОБЫ ЕГО НЕ ВЫПОЛНИТЬ, '
+                            f'{random.choice(UNLUCK)}, А? Я ТЕБЯ С КОРАБЛЯ ВЫКИНУ, БУДЕШЬ'
+                            f'ОРБИТУ ДРАИТЬ! ТОЛЬКО ПОПРОБУЙ ЭТО ПОВТОРИТЬ!',
+                            reply_markup=get_joke_keyboard())
+                        return
                     await update.message.reply_text(
                         f'Задание не выполнено. Оно не прошло проверку...',
                         reply_markup=get_main_keyboard())
@@ -269,26 +352,46 @@ async def enter_task(update, context):
                     if len(active_tasks_array) == 0:
                         text += '\nВсе задания выполнены!'
                         await restart_game(context)
+                    if casino_logs[update.effective_user.id][1] == 2:
+                        await update.message.reply_text(text, reply_markup=get_joke_keyboard())
+                        return
                     await update.message.reply_text(text, reply_markup=get_main_keyboard())
             elif task_number in failed_tasks:
+                if casino_logs[update.effective_user.id][1] == 2:
+                    await update.message.reply_text('Задание пока нельзя выполнить',
+                                                    reply_markup=get_joke_keyboard())
+                    return
                 await update.message.reply_text('Задание пока нельзя выполнить',
                                                 reply_markup=get_main_keyboard())
     elif task_number not in active_tasks_array and task_number in range(1, 37):
         if update.effective_user.id not in waiting_players:
+            if casino_logs[update.effective_user.id][1] == 2:
+                await update.message.reply_text('Активируйте команду /complete_task',
+                                                reply_markup=get_joke_keyboard())
+                return
             await update.message.reply_text('Активируйте команду /complete_task',
                                             reply_markup=get_main_keyboard())
         else:
             waiting_players.discard(update.effective_user.id)
+            if casino_logs[update.effective_user.id][1] == 2:
+                await update.message.reply_text('Задание было выполнено до вас',
+                                                reply_markup=get_joke_keyboard())
+                return
             await update.message.reply_text('Задание было выполнено до вас',
                                             reply_markup=get_main_keyboard())
     else:
         waiting_players.discard(update.effective_user.id)
+        if casino_logs[update.effective_user.id][1] == 2:
+            await update.message.reply_text('Бортовой компьютер не разобрал вашего сообщения',
+                                            reply_markup=get_joke_keyboard())
+            return
         await update.message.reply_text('Бортовой компьютер не разобрал вашего сообщения',
                                         reply_markup=get_main_keyboard())
 
 
 async def finish(update, context):
     global captain_player
+    global casino_logs
     if update.effective_chat.id != captain_player:
         await update.message.reply_text('Отказано',
                                         reply_markup=get_main_keyboard())
@@ -304,7 +407,8 @@ async def finish(update, context):
 async def crash(update, context):
     global crash_fl
     if crash_fl:
-        await broadcast(context, 'Всё уже сломали до тебя!')
+        await broadcast(context, f'Всё уже сломали до тебя!, '
+                                 f'{update.effective_user.first_name}')
         return
     crash_fl = True
     await broadcast(context, 'Всё сломалось, помогите!')
@@ -318,10 +422,17 @@ async def crash(update, context):
 
 async def meeting(update, context):
     global crash_fl
+    global casino_logs
     if crash_fl:
         await update.message.reply_text('Сбои в системе. Команда не принята')
         return
 
+    if casino_logs[update.effective_user.id][1] == 1:
+        await broadcast(context, f'{random.choice(LUCK)} созывает {random.choice(["своё казино-стадо", "статистику", "крипов", "переменных удачи"])}')
+        return
+    if casino_logs[update.effective_user.id][1] == 3:
+        await broadcast(context, f'{random.choice(UNLUCK)} просит {random.choice(["Великих", "Лордов", "Всех", "услышать своё пустое мнение и"])} подойти к столу')
+        return
     await broadcast(context, 'Общий сбор!', get_main_keyboard())
 
 
@@ -329,7 +440,12 @@ async def fix_errors(update, context):
     global crash_fl
     global active_tasks_array
     global captain_player
+    global casino_logs
     if update.effective_chat.id != captain_player:
+        if casino_logs[update.effective_user.id][1] == 2:
+            await update.message.reply_text('Отказано',
+                                            reply_markup=get_joke_keyboard())
+            return
         await update.message.reply_text('Отказано', reply_markup=get_main_keyboard())
         return
     crash_fl = False
@@ -354,6 +470,10 @@ async def fix_errors(update, context):
                             'Тут такое бы произошло! \n' \
                             'С кем я на корабле... \n' \
                             'Остановите, я выйду...'
+    if casino_logs[update.effective_user.id][1] == 2:
+        await update.message.reply_text(text,
+                                        reply_markup=get_joke_keyboard())
+        return
     await update.message.reply_text(text, reply_markup=get_main_keyboard())
 
 
@@ -444,7 +564,68 @@ async def kill_log(update, context):
 
 
 async def cam(update, context):
-    await update.message.reply_text('https://telemost.yandex.ru/j/32983473105542')
+    global casino_logs
+    if casino_logs[update.effective_user.id][1] == 1:
+        await update.message.reply_text(
+            f'{random.choice(LUCK)}, уберите крыс с корабля\n'
+            f'https://telemost.yandex.ru/j/32983473105542',
+            reply_markup=get_joke_keyboard())
+        return
+    if casino_logs[update.effective_user.id][1] == 2:
+        await update.message.reply_text('https://telemost.yandex.ru/j/32983473105542',
+                                        reply_markup=get_joke_keyboard())
+        return
+    await update.message.reply_text('https://telemost.yandex.ru/j/32983473105542',
+                                    reply_markup=get_main_keyboard())
+
+
+async def casino(update, context):
+    global casino_logs
+    user_id = update.effective_user.id
+    if casino_logs[user_id][0] > 3:
+        if casino_logs[update.effective_user.id][1] == 2:
+            await update.message.reply_text('Лудоман! Доступ заблокирован',
+                                            reply_markup=get_joke_keyboard())
+            return
+        if casino_logs[update.effective_user.id][1] == 2:
+            await update.message.reply_text(f'Сожалею, {random.choice(LUCK)}, '
+                                            f'такие, как Вы, не играют',
+                                            reply_markup=get_main_keyboard())
+            return
+        await update.message.reply_text('Лудоман! Доступ заблокирован',
+                                        reply_markup=get_main_keyboard())
+        return
+    casino_logs[user_id][0] += 1
+
+    slots = ["🎰", "🎲", "🤡", "🚀", "🚨"]
+
+    msg = await update.message.reply_text("🎰 Запуск казино...")
+    text = ''
+    for i in range(10):
+        text = random.choice(slots) + " " + random.choice(slots) + " " + random.choice(slots)
+        await msg.edit_text(text)
+        await asyncio.sleep(0.3)
+
+    if text == '🎰 🎰 🎰':
+        await update.message.reply_text('!!!MAX WIN!!!', reply_markup=get_main_keyboard())
+        casino_logs[user_id][1] = 1
+        await broadcast(context, f'{update.effective_user.first_name} - {random.choice(LUCK)}',
+                        get_main_keyboard())
+    if text == '🎲 🎲 🎲':
+        await update.message.reply_text('!!!YOU WIN ƃuᴉɥʇǝɯoS!!!', reply_markup=get_main_keyboard())
+        casino_logs[user_id][1] = 2
+    if text == '🤡 🤡 🤡':
+        await update.message.reply_text('вхаахаахаах 👉 🤡 👈', reply_markup=get_main_keyboard())
+        await update.message.reply_text('У тебя есть шанс оставить это втайне',
+                                        reply_markup=get_main_keyboard())
+        casino_logs[user_id][1] = 3
+    if text == '🚀 🚀 🚀':
+        await update.message.reply_text('!!!ДоДеП!!!', reply_markup=get_main_keyboard())
+        casino_logs[user_id][0] -= 5
+    if text == '🚨 🚨 🚨':
+        await update.message.reply_text('Объявление!', reply_markup=get_main_keyboard())
+        await broadcast(context, f'{update.effective_user.first_name} - Лудоман',
+                        get_main_keyboard())
 
 
 async def text_buttons(update, context):
@@ -480,6 +661,37 @@ async def text_buttons(update, context):
     elif text == 'Камеры':
         await cam(update, context)
 
+    elif 'мам' in text.lower():
+        await update.message.reply_text('Встретимся у твоей мамки',
+                                        reply_markup=get_main_keyboard())
+
+    elif text == "Let's go gambling!":
+        await casino(update, context)
+
+    if text == 'ʜǝlԀ':
+        await help_command(update, context)
+
+    elif text == 'ʞsɐ⊥ ǝʌᴉʇɔ∀':
+        await active_tasks(update, context)
+
+    elif text == 'ʞsɐ⊥ ǝʇǝldɯoɔ':
+        await complete_task(update, context)
+
+    elif text == 'ɓuᴉʇǝǝɯ ʎɔuǝɹǝɯǝ':
+        await meeting(update, context)
+
+    elif text == 'ɥsɐɹɔ ɯǝʇsʎs':
+        await crash(update, context)
+
+    elif text == 'llᴉʞ':
+        await kill(update, context)
+
+    elif text == 'sɐɹǝɯɐɔ':
+        await cam(update, context)
+
+    elif text == 'sllᴉʞ':
+        await kill_log(update, context)
+
     else:
         await enter_task(update, context)
 
@@ -501,6 +713,7 @@ def main():
     application.add_handler(CommandHandler('status', status))
     application.add_handler(CommandHandler('kill_log', kill_log))
     application.add_handler(CommandHandler('cam', cam))
+    application.add_handler(CommandHandler('casino', casino))
     text_handler = MessageHandler(filters.TEXT, text_buttons)
     application.add_handler(text_handler)
     application.run_polling()
